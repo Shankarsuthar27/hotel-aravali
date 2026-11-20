@@ -1,0 +1,996 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import Sidebar from './components/layout/Sidebar';
+import TopNav from './components/layout/TopNav';
+import TapeChartView from './components/calendar/TapeChartView';
+import ReservationsView from './components/reservations/ReservationsView';
+import HousekeepingView from './components/housekeeping/HousekeepingView';
+import RatesMatrixView from './components/rates/RatesMatrixView';
+import NightAuditView from './components/nightaudit/NightAuditView';
+import ReportsView from './components/reports/ReportsView';
+import GuestCrmView from './components/guests/GuestCrmView';
+import TeamPermissionsView from './components/permissions/TeamPermissionsView';
+import MyTeamView from './components/team/MyTeamView';
+import AcceptInviteView from './components/team/AcceptInviteView';
+import PropertySettingsView from './components/settings/PropertySettingsView';
+import SettingsView from './components/settings/SettingsView';
+import PropertiesView from './components/properties/PropertiesView';
+
+import CreateReservationModal from './components/reservations/CreateReservationModal';
+import FolioModal from './components/folios/FolioModal';
+import GroupRoomMoveModal from './components/reservations/GroupRoomMoveModal';
+import BookingVoucherModal from './components/reservations/BookingVoucherModal';
+import GstInvoiceModal from './components/folios/GstInvoiceModal';
+import MaintenanceBlockModal from './components/calendar/MaintenanceBlockModal';
+import DashboardView from './components/dashboard/DashboardView';
+import EditReservationView from './components/reservations/EditReservationView';
+import AddReservationView from './components/reservations/AddReservationView';
+import LoginView from './components/auth/LoginView';
+import ToastNotification from './components/common/ToastNotification';
+import AccessDeniedView from './components/common/AccessDeniedView';
+
+import { pmsStore } from './services/pmsStore';
+import { useRouter, navigate, ROUTES } from './services/router';
+import { createReservationViaApi } from './services/reservationApi';
+import { logoutStaff, subscribeToStaffAuth } from './services/firebaseAuth';
+import { canAccessRoute, getFirstAllowedTab, hasPermission } from './utils/permissions';
+import { CheckCircle2, AlertCircle } from 'lucide-react';
+
+export default function App() {
+  const router = useRouter();
+  const [state, setState] = useState(pmsStore.getState());
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+
+  // Derive active view and editing state directly from URL router
+  const isCreatingReservation = router.type === 'RESERVATIONS_CREATE';
+
+  const editingReservation = useMemo(() => {
+    if (router.type === 'RESERVATIONS_EDIT' && router.params.id) {
+      const targetId = router.params.id.toLowerCase();
+      return (
+        state.reservations.find(
+          (r) =>
+            r.id?.toLowerCase() === targetId ||
+            r.bookingReference?.toLowerCase() === targetId ||
+            r.bookingReference?.toLowerCase() === `#${targetId}`
+        ) || { id: router.params.id }
+      );
+    }
+    return null;
+  }, [router.type, router.params.id, state.reservations]);
+
+  const activeTab = router.tab || 'dashboard';
+
+  // Modals State
+  const [isNewBookingOpen, setIsNewBookingOpen] = useState(false);
+  const [slotPrefillData, setSlotPrefillData] = useState(null);
+
+  // Compute prefill data from router query params (e.g. ?roomId=rm_101&date=2026-10-24) or state
+  const effectivePrefillData = useMemo(() => {
+    if (slotPrefillData) return slotPrefillData;
+    if (router.queryParams?.roomId || router.queryParams?.roomNumber || router.queryParams?.date) {
+      const room = state.rooms.find(
+        (r) =>
+          r.id === router.queryParams.roomId ||
+          r.roomNumber === (router.queryParams.roomNumber || router.queryParams.roomId)
+      );
+      return {
+        room: room || null,
+        roomId: router.queryParams.roomId,
+        date: router.queryParams.date || router.queryParams.checkIn
+      };
+    }
+    return null;
+  }, [slotPrefillData, router.queryParams, state.rooms]);
+
+  const [selectedReservation, setSelectedReservation] = useState(null);
+  const [isFolioOpen, setIsFolioOpen] = useState(false);
+
+  const [selectedResForMove, setSelectedResForMove] = useState(null);
+  const [isRoomMoveOpen, setIsRoomMoveOpen] = useState(false);
+
+  const [selectedResForVoucher, setSelectedResForVoucher] = useState(null);
+  const [isVoucherOpen, setIsVoucherOpen] = useState(false);
+
+  const [selectedResForInvoice, setSelectedResForInvoice] = useState(null);
+  const [isInvoiceOpen, setIsInvoiceOpen] = useState(false);
+
+  const [isMaintenanceOpen, setIsMaintenanceOpen] = useState(false);
+  const [maintenanceInitialData, setMaintenanceInitialData] = useState(null);
+
+  // Toast Notification
+  const [toastMessage, setToastMessage] = useState(null);
+
+  const showToast = (msg, type = null) => {
+    if (typeof msg === 'object' && msg !== null) {
+      setToastMessage(msg);
+    } else if (type) {
+      setToastMessage({ message: msg, type });
+    } else {
+      setToastMessage(msg);
+    }
+  };
+
+  // Blur page background whenever operational modals are open
+  useEffect(() => {
+    const isAnyModalOpen =
+      isRoomMoveOpen ||
+      isVoucherOpen ||
+      isInvoiceOpen ||
+      isMaintenanceOpen;
+
+    if (isAnyModalOpen) {
+      document.body.classList.add('has-res-modal-open');
+    } else {
+      document.body.classList.remove('has-res-modal-open');
+    }
+  }, [isRoomMoveOpen, isVoucherOpen, isInvoiceOpen, isMaintenanceOpen]);
+
+  useEffect(() => {
+    const unsubscribe = pmsStore.subscribe((newState) => {
+      setState(newState);
+    });
+    return unsubscribe;
+  }, []);
+
+  // Keep Firebase Auth cleanly synchronized: NEVER auto-login from cached/anonymous Firebase sessions
+  useEffect(() => {
+    const unsubscribeAuth = subscribeToStaffAuth((firebaseUser) => {
+      if (firebaseUser && !pmsStore.isAuthenticated) {
+        // Clear lingering Firebase Auth / anonymous session so refresh never auto-logs into a ghost "Staff Member"
+        logoutStaff();
+      }
+    });
+    return () => {
+      if (typeof unsubscribeAuth === 'function') unsubscribeAuth();
+    };
+  }, []);
+
+  // Staff Sign In / Sign Out Handlers
+  const handleLoginSuccess = (staffProfile) => {
+    const loginRes = pmsStore.loginUser(staffProfile);
+    if (!loginRes?.success) {
+      showToast(loginRes?.error || 'Account access restricted.', 'error');
+      return;
+    }
+    const activeProfile = loginRes.user || staffProfile;
+    showToast(`👋 Welcome back, ${activeProfile.name || 'Staff'}! Terminal active.`, 'success');
+
+    const firstAllowed = getFirstAllowedTab(activeProfile);
+    const defaultDest = firstAllowed === 'myteam' ? '/my-team' : `/${firstAllowed}`;
+    let dest = defaultDest;
+    try {
+      const intended = sessionStorage.getItem('pms_intended_dest');
+      if (intended && intended !== '/login' && intended !== '/') {
+        const intendedTab = intended.replace(/^\//, '').split(/[/?]/)[0].replace('my-team', 'myteam');
+        if (canAccessRoute(activeProfile, intendedTab)) {
+          dest = intended;
+        }
+        sessionStorage.removeItem('pms_intended_dest');
+      }
+    } catch (e) {}
+    navigate(dest);
+  };
+
+  const handleLogout = async () => {
+    await logoutStaff();
+    pmsStore.logoutUser();
+    showToast('Staff member signed out of terminal.');
+    navigate('/login');
+  };
+
+  // Route Protection Guard: Require authentication for PMS routes & respect RBAC on redirect
+  useEffect(() => {
+    if (!state.isAuthenticated || !state.currentUser) {
+      if (activeTab !== 'login' && activeTab !== 'accept-invite') {
+        try {
+          const intended = window.location.pathname + window.location.search;
+          if (intended && intended !== '/' && intended !== '/login') {
+            sessionStorage.setItem('pms_intended_dest', intended);
+          }
+        } catch (e) {}
+        navigate('/login', { replace: true });
+      }
+    } else {
+      if (activeTab === 'login') {
+        const firstAllowed = getFirstAllowedTab(state.currentUser);
+        let dest = firstAllowed === 'myteam' ? '/my-team' : `/${firstAllowed}`;
+        try {
+          const intended = sessionStorage.getItem('pms_intended_dest');
+          if (intended && intended !== '/login' && intended !== '/') {
+            const intendedTab = intended.replace(/^\//, '').split(/[/?]/)[0].replace('my-team', 'myteam');
+            if (canAccessRoute(state.currentUser, intendedTab)) {
+              dest = intended;
+            }
+            sessionStorage.removeItem('pms_intended_dest');
+          }
+        } catch (e) {}
+        navigate(dest, { replace: true });
+      }
+    }
+  }, [state.isAuthenticated, state.currentUser, activeTab]);
+
+  // Update browser document title based on endpoint URL
+  useEffect(() => {
+    if (isCreatingReservation) {
+      document.title = 'Add Reservation | Hotel Astha PMS';
+    } else if (editingReservation) {
+      document.title = `Edit Reservation ${editingReservation.bookingReference || ''} | Hotel Astha PMS`;
+    } else {
+      const titles = {
+        login: 'Staff Sign In | Hotel Astha PMS',
+        dashboard: 'Dashboard | Hotel Astha PMS',
+        reservations: 'Reservations Management | Hotel Astha PMS',
+        calendar: 'Calendar Tape Chart | Hotel Astha PMS',
+        rates: 'Rates & Inventory | Hotel Astha PMS',
+        housekeeping: 'Housekeeping & Rooms | Hotel Astha PMS',
+        nightaudit: 'Night Audit | Hotel Astha PMS',
+        reports: 'Reports | Hotel Astha PMS',
+        guests: 'Guests CRM | Hotel Astha PMS',
+        myteam: 'My Team | Hotel Astha PMS',
+        permissions: 'Team Permissions | Hotel Astha PMS',
+        properties: 'Property Settings | Hotel Astha PMS',
+        settings: 'Settings | Hotel Astha PMS'
+      };
+      document.title = titles[activeTab] || 'Hotel Astha PMS';
+    }
+  }, [isCreatingReservation, editingReservation, activeTab]);
+
+  // Disallow editing cancelled or no-show reservations - redirect to /reservations with toast
+  useEffect(() => {
+    if (editingReservation) {
+      const target = state.reservations.find((r) => r.id === editingReservation.id) || editingReservation;
+      const statusNorm = (target?.status || '').toLowerCase().replace('-', '_').replace(' ', '_');
+      if (statusNorm === 'cancelled') {
+        showToast('⚠️ Cancelled reservations cannot be edited.');
+        navigate('/reservations');
+      } else if (statusNorm === 'no_show') {
+        showToast('⚠️ No-Show reservations cannot be edited.');
+        navigate('/reservations');
+      }
+    }
+  }, [editingReservation, state.reservations]);
+
+  // --- Handlers ---
+
+  const handleCheckIn = (resId, roomId) => {
+    pmsStore.checkInReservation(resId, roomId);
+    const cleanId = typeof resId === 'object' ? (resId?.id || resId?.bookingReference) : resId;
+    const res = state.reservations.find((r) => r.id === cleanId || r.bookingReference === cleanId);
+    showToast(`✅ Guest ${res ? (res.primaryGuest?.name || res.guestName) : ''} checked in to Room ${res ? res.roomNumber : ''}`);
+    if (selectedReservation && (selectedReservation.id === cleanId || selectedReservation.bookingReference === cleanId)) {
+      setSelectedReservation({ ...selectedReservation, status: 'in_house' });
+    }
+  };
+
+  const handleCheckOut = (resId) => {
+    const resResult = pmsStore.checkOutReservation(resId);
+    const cleanId = typeof resId === 'object' ? (resId?.id || resId?.bookingReference) : resId;
+    const res = state.reservations.find((r) => r.id === cleanId || r.bookingReference === cleanId);
+    if (resResult && resResult.success === false) {
+      showToast(`❌ ${resResult.message}`);
+      return;
+    }
+    showToast(`👋 Guest ${res ? (res.primaryGuest?.name || res.guestName) : ''} checked out. Room ${res ? res.roomNumber : ''} auto-flagged DIRTY.`);
+    if (selectedReservation && (selectedReservation.id === cleanId || selectedReservation.bookingReference === cleanId)) {
+      setSelectedReservation({ ...selectedReservation, status: 'checked_out' });
+    }
+  };
+
+  const handleCreateReservation = async (bookingData) => {
+    // 1. Call REST API /reservations/create & persist to local store
+    const newRes = await createReservationViaApi(bookingData);
+    showToast(`🎉 Reservation ${newRes.bookingReference || '#RES_CONFIRMED'} confirmed for ${newRes.primaryGuest?.name || 'Guest'}!`);
+    
+    // 2. Open voucher modal
+    setSelectedResForVoucher(newRes);
+    setIsVoucherOpen(true);
+    setSlotPrefillData(null);
+
+    // 3. Smoothly update browser URL endpoint back to /reservations
+    navigate('/reservations');
+  };
+
+  const handleUpdateRoomStatus = (roomId, newStatus) => {
+    pmsStore.updateRoomStatus(roomId, newStatus);
+    const room = state.rooms.find((r) => r.id === roomId);
+    showToast(`🧹 Room ${room ? room.roomNumber : ''} hygiene status updated to ${newStatus.toUpperCase()}`);
+  };
+
+  const handleAddFolioTransaction = (resId, tx) => {
+    pmsStore.addFolioTransaction(resId, tx);
+    showToast(`💳 Folio updated with ${tx.type}: ₹${Math.abs(tx.amount)}`);
+    const updated = pmsStore.getState().reservations.find((r) => r.id === resId);
+    if (updated) setSelectedReservation(updated);
+  };
+
+  const handleSettleFolio = (resId, mode, ref, date, amount) => {
+    pmsStore.settleFolio(resId, mode, ref, date, amount);
+    showToast(`✅ Folio balance settled in full via ${mode}`);
+    const updated = pmsStore.getState().reservations.find((r) => r.id === resId);
+    if (updated) setSelectedReservation(updated);
+  };
+
+  const handleMoveRoom = (resId, targetRoomId) => {
+    const success = pmsStore.groupRoomMove(resId, targetRoomId);
+    if (success) {
+      const room = state.rooms.find((r) => r.id === targetRoomId);
+      showToast(`🔄 Room moved to Room ${room?.roomNumber}`);
+      const updated = pmsStore.getState().reservations.find((r) => r.id === resId);
+      if (updated) setSelectedReservation(updated);
+    }
+  };
+
+  const handleCancelReservation = (resId) => {
+    pmsStore.cancelReservation(resId);
+    showToast(`🚫 Reservation cancelled and updated in database.`);
+  };
+
+  const handleDeleteReservation = (resId) => {
+    pmsStore.deleteReservation(resId);
+    showToast(`🗑️ Reservation permanently deleted from database.`);
+  };
+
+  const handleNoShowReservation = (resId) => {
+    pmsStore.markNoShow(resId);
+    showToast(`⚠️ Reservation marked as No-Show.`);
+  };
+
+  const handleSlotClick = (room, dateStr) => {
+    setSlotPrefillData({ room, date: dateStr });
+    navigate(`/reservations/create?roomId=${room.id}&date=${dateStr}`);
+  };
+
+  const handleSlotMaintenanceClick = (block) => {
+    setMaintenanceInitialData(block);
+    setIsMaintenanceOpen(true);
+  };
+
+  const handleAddMaintenanceBlock = (blockData) => {
+    pmsStore.addMaintenanceBlock(blockData);
+    showToast(`🔧 Maintenance block scheduled for Room ${blockData.roomId}`);
+  };
+
+  const handleDeleteMaintenanceBlock = (blockId) => {
+    pmsStore.removeMaintenanceBlock(blockId);
+    showToast(`✅ Room released from maintenance block.`);
+  };
+
+  const handleExecuteNightAudit = () => {
+    const record = pmsStore.executeNightAudit();
+    showToast(`🌙 Night Audit completed! Business date advanced to ${pmsStore.getState().property.businessDate}`);
+    return record;
+  };
+
+  const counts = {
+    reservations: state.reservations.length,
+    dirtyRooms: state.rooms.filter((r) => r.status === 'dirty').length,
+    pendingDepartures: state.reservations.filter((r) => r.status === 'in_house' && r.checkOutDate === state.property.businessDate).length
+  };
+
+  return (
+    <div className="app-container">
+      {/* Global Toast Notification - Portal rendered at root with frosted backdrop & guaranteed visibility */}
+      {toastMessage && (
+        <ToastNotification
+          toast={toastMessage}
+          onClose={() => setToastMessage(null)}
+        />
+      )}
+
+      {/* Auth Gate: If not authenticated and not on public accept-invite, show Staff Sign In */}
+      {(!state.isAuthenticated || !state.currentUser) && activeTab !== 'accept-invite' ? (
+        <LoginView onLoginSuccess={handleLoginSuccess} teamMembers={state.teamMembers} />
+      ) : activeTab === 'login' ? (
+        <LoginView onLoginSuccess={handleLoginSuccess} teamMembers={state.teamMembers} />
+      ) : editingReservation && !['cancelled', 'no_show'].includes((((state.reservations.find((r) => r.id === editingReservation.id) || editingReservation).status || '').toLowerCase().replace('-', '_').replace(' ', '_'))) ? (
+        <div className="edit-res-fullscreen-overlay">
+          <EditReservationView
+            reservation={state.reservations.find((r) => r.id === editingReservation.id) || editingReservation}
+            property={state.property}
+            rooms={state.rooms}
+            roomTypes={state.roomTypes}
+            onBack={() => {
+              if (window.history.length > 1) {
+                window.history.back();
+              } else {
+                navigate('/reservations');
+              }
+            }}
+            onNavigate={(tab) => navigate(tab === 'dashboard' ? '/dashboard' : '/' + tab)}
+            onSave={(updated) => {
+              pmsStore.updateReservation(updated.id, updated);
+              showToast(`✅ Reservation ${updated.bookingReference} updated successfully.`);
+            }}
+            onAssignRoom={(resId, roomId) => {
+              pmsStore.assignRoom(resId, roomId);
+              showToast('Success: Room assigned successfully');
+            }}
+            onCheckIn={(resId, roomId) => {
+              pmsStore.checkInReservation(resId, roomId);
+              showToast('Success: Check-in successful');
+            }}
+            onCheckOut={(resId) => {
+              const res = pmsStore.checkOutReservation(resId);
+              if (res.success) {
+                showToast(`Success: Check-out successful. Room auto-flagged DIRTY.`);
+              } else {
+                showToast(`❌ ${res.message}`);
+              }
+            }}
+            onPostPendingCharges={(resId) => {
+              pmsStore.postPendingCharges(resId);
+              showToast('Success: Pending nightly tariff & taxes posted to folio.');
+            }}
+            onAddFolioCharge={(resId, chg) => {
+              pmsStore.addFolioCharge(resId, chg);
+              showToast(`Success: Posted ${chg.category} charge of ₹${chg.amount}`);
+            }}
+            onAddFolioPayment={(resId, pay) => {
+              pmsStore.addFolioPayment(resId, pay);
+              showToast(`Success: Posted ${pay.type || 'Payment'} of ₹${pay.amount} via ${pay.paymentMethod}`);
+            }}
+            onVoidPayment={(resId, txId, reason) => {
+              pmsStore.voidPayment(resId, txId, reason);
+              showToast(`Success: Payment voided. Balance restored to outstanding.`);
+            }}
+            onAddFolioTransaction={handleAddFolioTransaction}
+            onSettleFolio={handleSettleFolio}
+          />
+        </div>
+      ) : isCreatingReservation ? (
+        !hasPermission(state.currentUser, 'reservations.create') ? (
+          <AccessDeniedView
+            fullScreen={true}
+            sectionName="Create Reservation"
+            userRole={state.currentUser?.role || 'Staff'}
+            onGoHome={() => {
+              const firstTab = getFirstAllowedTab(state.currentUser);
+              navigate(firstTab === 'myteam' ? '/my-team' : `/${firstTab}`);
+            }}
+          />
+        ) : (
+        /* Full-Screen Add Reservation View matching OTAL PMS */
+        <div className="add-res-fullscreen-overlay">
+          <AddReservationView
+            property={state.property}
+            rooms={state.rooms}
+            roomTypes={state.roomTypes}
+            ratePlans={state.ratePlans}
+            taxRules={state.taxRules || []}
+            reservations={state.reservations}
+            maintenanceBlocks={state.maintenanceBlocks}
+            initialData={effectivePrefillData}
+            onBack={() => {
+              setSlotPrefillData(null);
+              navigate('/reservations');
+            }}
+            onNavigate={(tab) => {
+              setSlotPrefillData(null);
+              navigate(tab === 'dashboard' ? '/dashboard' : '/' + tab);
+            }}
+            onSubmit={async (bookingData) => {
+              const newRes = await createReservationViaApi(bookingData);
+              showToast(`🎉 Reservation ${newRes.bookingReference || '#RES_CONFIRMED'} confirmed for ${newRes.primaryGuest?.name || 'Guest'}!`);
+              setSlotPrefillData(null);
+              return newRes;
+            }}
+          />
+        </div>
+        )
+      ) : activeTab === 'accept-invite' ? (
+        <AcceptInviteView
+          token={router.queryParams?.token}
+          pmsStore={pmsStore}
+          onAcceptSuccess={(member) => {
+            pmsStore.loginUser(member);
+            showToast(`🎉 Welcome ${member.name}! Account activated.`);
+            navigate('/dashboard');
+          }}
+          onNavigateHome={() => navigate('/dashboard')}
+        />
+      ) : (
+        <>
+          {/* Global Sidebar with Collapse Support */}
+          <Sidebar
+            activeTab={activeTab}
+            activeSubtab={router.subtab}
+            setActiveTab={(tab, subtab) => {
+              if (tab === 'myteam') {
+                navigate('/my-team');
+                return;
+              }
+              if (tab === 'properties') {
+                navigate(subtab ? `/properties/${subtab}` : '/properties/all');
+                return;
+              }
+              navigate(tab === 'dashboard' ? '/dashboard' : '/' + tab);
+            }}
+            counts={counts}
+            property={state.property}
+            currentUser={state.currentUser}
+            teamMembers={state.teamMembers}
+            onSwitchUser={(uId) => pmsStore.switchUser(uId)}
+            hasPermission={(path) => pmsStore.hasPermission(path)}
+            onLogout={handleLogout}
+            isCollapsed={isSidebarCollapsed}
+            onToggleCollapse={() => setIsSidebarCollapsed((prev) => !prev)}
+          />
+
+          {/* Main Content Area */}
+          <div className="main-wrapper">
+            {/* Top Navbar for secondary screens */}
+            {activeTab !== 'dashboard' && activeTab !== 'reservations' && activeTab !== 'guests' && activeTab !== 'myteam' && activeTab !== 'permissions' && activeTab !== 'properties' && (
+              <TopNav
+                property={state.property}
+                activeTab={activeTab}
+                searchQuery={searchQuery}
+                setSearchQuery={setSearchQuery}
+                currentUser={state.currentUser}
+                onLogout={handleLogout}
+                onNewReservation={() => {
+                  setSlotPrefillData(null);
+                  navigate('/reservations/create');
+                }}
+                onRefresh={() => {
+                  showToast('🔄 Synchronized state with PMS Cloud & Storage');
+                }}
+              />
+            )}
+
+        {/* Dynamic Viewport with Page Transitions */}
+        <main className={`content-viewport ${activeTab === 'reservations' || activeTab === 'dashboard' || activeTab === 'rates' || activeTab === 'guests' || activeTab === 'myteam' || activeTab === 'permissions' || activeTab === 'properties' || activeTab === 'calendar' ? 'no-pad-viewport' : ''} ${activeTab === 'calendar' ? 'calendar-viewport' : ''} ${activeTab === 'rates' ? 'rates-viewport' : ''} ${activeTab === 'reservations' ? 'reservations-viewport' : ''}`}>
+          <div key={activeTab} className="pms-page-view">
+            {!canAccessRoute(state.currentUser, activeTab) ? (
+              <AccessDeniedView
+                sectionName={activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}
+                userRole={state.currentUser?.role || 'Staff'}
+                onGoHome={() => {
+                  const firstTab = getFirstAllowedTab(state.currentUser);
+                  navigate(firstTab === 'myteam' ? '/my-team' : `/${firstTab}`);
+                }}
+              />
+            ) : (
+            <>
+            {activeTab === 'dashboard' && (
+            <DashboardView
+              property={state.property}
+              rooms={state.rooms}
+              reservations={state.reservations}
+              announcements={state.announcements || []}
+              onNavigateTab={(tab, options) => {
+                const targetTab = tab === 'myteam' ? 'my-team' : tab;
+                if (options?.tab) {
+                  navigate(`/${targetTab}?tab=${options.tab}`);
+                } else if (options?.filter) {
+                  if (tab === 'reservations' && ['arrivals', 'departures', 'in_house'].includes(options.filter)) {
+                    navigate(`/${targetTab}?tab=${options.filter}`);
+                  } else {
+                    navigate(`/${targetTab}?filter=${options.filter}`);
+                  }
+                } else {
+                  navigate('/' + targetTab);
+                }
+              }}
+              onAddAnnouncement={(note) => {
+                pmsStore.addAnnouncement(note);
+                showToast('📢 New staff note posted.');
+              }}
+              onDeleteAnnouncement={(noteId) => {
+                pmsStore.deleteAnnouncement(noteId);
+                showToast('🗑️ Announcement removed.');
+              }}
+            />
+          )}
+
+          {activeTab === 'calendar' && (
+            <TapeChartView
+              property={state.property}
+              roomTypes={state.roomTypes}
+              rooms={state.rooms}
+              reservations={state.reservations}
+              maintenanceBlocks={state.maintenanceBlocks}
+              onSelectReservation={(res) => {
+                setSelectedReservation(res);
+                setIsFolioOpen(true);
+              }}
+              onEditReservation={(res) => {
+                const statusNorm = (res?.status || '').toLowerCase().replace('-', '_').replace(' ', '_');
+                if (statusNorm === 'cancelled') {
+                  showToast('⚠️ Cancelled reservations cannot be edited.');
+                  return;
+                }
+                if (statusNorm === 'no_show') {
+                  showToast('⚠️ No-Show reservations cannot be edited.');
+                  return;
+                }
+                const targetId = res?.id || (res?.bookingReference ? res.bookingReference.replace('#', '').toLowerCase() : 'res_1');
+                navigate(`/reservations/${targetId}/edit`);
+              }}
+              onSlotClick={handleSlotClick}
+              onSlotMaintenanceClick={handleSlotMaintenanceClick}
+            />
+          )}
+
+          {activeTab === 'reservations' && (
+            <ReservationsView
+              reservations={state.reservations}
+              property={state.property}
+              currentUser={state.currentUser}
+              rooms={state.rooms}
+              roomTypes={state.roomTypes}
+              initialTab={router.queryParams?.tab || 'all'}
+              initialStatusFilter={router.queryParams?.status || 'all'}
+              onAssignRoom={(resId, roomId) => {
+                pmsStore.assignRoom(resId, roomId);
+                showToast('Success: Room assigned successfully');
+              }}
+              onCheckIn={(resId, roomId) => {
+                pmsStore.checkInReservation(resId, roomId);
+                showToast('Success: Check-in successful');
+              }}
+              onCheckOut={(resId) => {
+                const res = pmsStore.checkOutReservation(resId);
+                if (res.success) {
+                  showToast('Success: Check-out successful. Room auto-flagged DIRTY.');
+                } else {
+                  showToast(`❌ ${res.message}`);
+                }
+              }}
+              onSelectReservation={(res) => {
+                setSelectedReservation(res);
+                setIsFolioOpen(true);
+              }}
+              onNewReservation={() => {
+                setSlotPrefillData(null);
+                navigate('/reservations/create');
+              }}
+              onOpenRoomMove={(res) => {
+                setSelectedResForMove(res);
+                setIsRoomMoveOpen(true);
+              }}
+              onOpenVoucher={(res) => {
+                setSelectedResForVoucher(res);
+                setIsVoucherOpen(true);
+              }}
+              onOpenInvoice={(res) => {
+                setSelectedResForInvoice(res);
+                setIsInvoiceOpen(true);
+              }}
+              onCancelReservation={handleCancelReservation}
+              onDeleteReservation={handleDeleteReservation}
+              onNoShowReservation={handleNoShowReservation}
+              onEditReservation={(res) => {
+                const statusNorm = (res?.status || '').toLowerCase().replace('-', '_').replace(' ', '_');
+                if (statusNorm === 'cancelled') {
+                  showToast('⚠️ Cancelled reservations cannot be edited.');
+                  return;
+                }
+                if (statusNorm === 'no_show') {
+                  showToast('⚠️ No-Show reservations cannot be edited.');
+                  return;
+                }
+                navigate(`/reservations/${res.id}/edit`);
+              }}
+              onUpdateReservation={(updated) => {
+                pmsStore.updateReservation(updated.id, updated);
+                showToast(`✅ Reservation ${updated.bookingReference} updated successfully.`);
+              }}
+              onPostPendingCharges={(resId) => {
+                pmsStore.postPendingCharges(resId);
+                showToast('Success: Nightly room charges posted onto folio');
+              }}
+              onAddFolioCharge={(resId, charge) => {
+                pmsStore.addFolioCharge(resId, charge);
+                showToast('Success: Folio charge posted');
+              }}
+              onAddFolioPayment={(resId, payment) => {
+                pmsStore.addFolioPayment(resId, payment);
+                showToast('Success: Payment recorded');
+              }}
+              onVoidPayment={(resId, txId, reason) => {
+                pmsStore.voidPayment(resId, txId, reason);
+                showToast('Success: Payment voided');
+              }}
+              onAddFolioTransaction={handleAddFolioTransaction}
+              onSettleFolio={handleSettleFolio}
+            />
+          )}
+
+          {activeTab === 'housekeeping' && (
+            <HousekeepingView
+              rooms={state.rooms}
+              roomTypes={state.roomTypes}
+              reservations={state.reservations}
+              onUpdateStatus={handleUpdateRoomStatus}
+              onNewReservation={(roomId) => {
+                if (roomId) {
+                  const room = state.rooms.find(r => r.id === roomId || r.roomNumber === roomId);
+                  if (room) setSlotPrefillData({ room, roomId: room.id });
+                }
+                navigate('/reservations/create');
+              }}
+              onSelectReservation={(res) => {
+                setSelectedReservation(res);
+              }}
+            />
+          )}
+
+          {activeTab === 'rates' && (
+            <RatesMatrixView
+              roomTypes={state.roomTypes}
+              rooms={state.rooms}
+              reservations={state.reservations}
+              maintenanceBlocks={state.maintenanceBlocks}
+              property={state.property}
+              stopouts={state.stopouts}
+              dailyRates={state.dailyRates}
+              restrictions={state.restrictions}
+              otaChannels={state.otaChannels}
+              ratePlans={state.ratePlans}
+              onToggleStopout={(rtId, d) => {
+                pmsStore.toggleStopout(rtId, d);
+              }}
+              onBulkUpdate={(payload) => {
+                pmsStore.bulkUpdateRates(payload);
+                showToast(`✅ Bulk rates and restrictions applied successfully.`);
+              }}
+              onSaveRates={(ratesMap, tier) => {
+                pmsStore.updateDailyRates(ratesMap, tier);
+                showToast(`✅ Rates updated and saved successfully.`);
+              }}
+              onFullSyncChannel={(channelId) => {
+                pmsStore.triggerOtaFullSync(channelId);
+                showToast(`🌐 Pushed full ARI inventory and derived rates to OTA channel!`);
+              }}
+            />
+          )}
+
+          {activeTab === 'nightaudit' && (
+            <NightAuditView
+              property={state.property}
+              reservations={state.reservations}
+              rooms={state.rooms}
+              nightAudits={state.nightAudits}
+              onExecuteAudit={handleExecuteNightAudit}
+            />
+          )}
+
+          {activeTab === 'reports' && (
+            <ReportsView
+              property={state.property}
+              rooms={state.rooms}
+              reservations={state.reservations}
+              nightAudits={state.nightAudits}
+              folios={state.folios}
+              showToast={showToast}
+            />
+          )}
+
+          {activeTab === 'guests' && (
+            <GuestCrmView
+              reservations={state.reservations}
+              onShowToast={showToast}
+            />
+          )}
+
+          {activeTab === 'myteam' && (
+            <MyTeamView
+              teamMembers={state.teamMembers}
+              propertiesList={state.propertiesList || ['HOTEL ASTHA']}
+              currentProperty={state.property?.name || 'HOTEL ASTHA'}
+              propertyId={pmsStore.propertyId || 'hotel_astha_main'}
+              currentUser={state.currentUser}
+              onStaffCreated={(memberRecord) => {
+                pmsStore.registerProvisionedStaff(memberRecord);
+              }}
+              onToggleStaffStatus={(memberId) => {
+                pmsStore.toggleStaffStatus(memberId);
+              }}
+              onInviteMembers={({ emails, assignments }) => {
+                pmsStore.inviteTeamMembers({
+                  emails,
+                  assignments,
+                  invitedBy: state.currentUser?.name || 'Astha India'
+                });
+              }}
+              onUpdateMember={(id, patch) => {
+                pmsStore.updateTeamMember(id, patch);
+              }}
+              onManagePermissions={(memberId) => {
+                navigate(`/permissions?memberId=${memberId}&subtab=manage_team`);
+              }}
+              onRemoveInvitation={(id) => pmsStore.removeInvitation(id)}
+              onRemoveMember={(id) => pmsStore.removeTeamMember(id)}
+              showToast={showToast}
+              onNavigateToAccept={(tok) => navigate(`/accept-invite?token=${tok}`)}
+            />
+          )}
+
+          {activeTab === 'permissions' && (
+            <TeamPermissionsView
+              teamMembers={state.teamMembers}
+              currentUser={state.currentUser}
+              propertiesList={state.propertiesList || ['HOTEL ASTHA']}
+              currentProperty={state.property?.name || 'HOTEL ASTHA'}
+              initialMemberId={router.queryParams?.memberId}
+              initialSubtab={router.queryParams?.subtab}
+              onSaveGranularPermissions={(userId, perms, targetProps, copyIds) => {
+                pmsStore.updateGranularPermissions(userId, perms, targetProps, copyIds);
+              }}
+              onBack={() => navigate('/my-team')}
+              showToast={showToast}
+            />
+          )}
+
+          {activeTab === 'properties' && (
+            <PropertiesView
+              subtab={router.subtab || 'all'}
+              property={state.property}
+              propertiesList={state.propertiesList || ['HOTEL ASTHA']}
+              mealPlans={state.mealPlans || []}
+              roomTypes={state.roomTypes || []}
+              rooms={state.rooms || []}
+              ratePlans={state.ratePlans || []}
+              taxRules={state.taxRules || []}
+              serviceCharges={state.serviceCharges || []}
+              onSaveProperty={(patch) => {
+                pmsStore.updateProperty(patch);
+              }}
+              onCreateMealPlan={(planData) => {
+                pmsStore.addMealPlan(planData);
+              }}
+              onUpdateMealPlan={(planId, patch) => {
+                pmsStore.updateMealPlan(planId, patch);
+              }}
+              onDeleteMealPlan={(planId) => {
+                pmsStore.deleteMealPlan(planId);
+              }}
+              onAddRoomType={(data) => {
+                pmsStore.addRoomType(data);
+              }}
+              onUpdateRoomType={(id, patch) => {
+                pmsStore.updateRoomType(id, patch);
+              }}
+              onDeleteRoomType={(id) => {
+                const res = pmsStore.deleteRoomType(id);
+                if (res && res.success === false) {
+                  showToast(res.message, 'error');
+                  return res;
+                }
+                return { success: true };
+              }}
+              onAddRooms={(roomsList) => {
+                pmsStore.addRooms(roomsList);
+              }}
+              onUpdateRoom={(id, patch) => {
+                pmsStore.updateRoom(id, patch);
+              }}
+              onDeleteRoom={(id) => {
+                pmsStore.deleteRoom(id);
+              }}
+              onCreateRatePlan={(data) => {
+                pmsStore.addRatePlan(data);
+              }}
+              onUpdateRatePlan={(id, patch) => {
+                pmsStore.updateRatePlan(id, patch);
+              }}
+              onDeleteRatePlan={(id) => {
+                pmsStore.deleteRatePlan(id);
+              }}
+              onCreateTaxRule={(data) => {
+                pmsStore.addTaxRule(data);
+              }}
+              onUpdateTaxRule={(id, patch) => {
+                pmsStore.updateTaxRule(id, patch);
+              }}
+              onDeleteTaxRule={(id) => {
+                pmsStore.deleteTaxRule(id);
+              }}
+              onCreateServiceCharge={(data) => {
+                pmsStore.addServiceCharge(data);
+              }}
+              onUpdateServiceCharge={(id, patch) => {
+                pmsStore.updateServiceCharge(id, patch);
+              }}
+              onDeleteServiceCharge={(id) => {
+                pmsStore.deleteServiceCharge(id);
+              }}
+              showToast={showToast}
+            />
+          )}
+
+          {activeTab === 'settings' && (
+            <SettingsView
+              property={state.property}
+              onSaveProperty={(patch) => {
+                pmsStore.updateProperty(patch);
+              }}
+              showToast={showToast}
+            />
+          )}
+            </>
+            )}
+          </div>
+        </main>
+      </div>
+        </>
+      )}
+
+      {/* --- ALL OPERATIONAL MODALS --- */}
+
+      {/* 1. Walk-In Wizard Modal */}
+      <CreateReservationModal
+        isOpen={isNewBookingOpen}
+        onClose={() => setIsNewBookingOpen(false)}
+        initialData={slotPrefillData}
+        roomTypes={state.roomTypes}
+        rooms={state.rooms}
+        ratePlans={state.ratePlans}
+        onSubmit={handleCreateReservation}
+      />
+
+      {/* 2. Deep-Dive Folio & Reservation Details Modal */}
+      <FolioModal
+        isOpen={isFolioOpen}
+        onClose={() => setIsFolioOpen(false)}
+        reservation={selectedReservation}
+        folios={state.folios}
+        auditTrail={state.auditTrail}
+        onCheckIn={handleCheckIn}
+        onCheckOut={handleCheckOut}
+        onAddTransaction={handleAddFolioTransaction}
+        onSettleFolio={handleSettleFolio}
+        onOpenRoomMove={(res) => {
+          setSelectedResForMove(res);
+          setIsRoomMoveOpen(true);
+        }}
+        onOpenVoucher={(res) => {
+          setSelectedResForVoucher(res);
+          setIsVoucherOpen(true);
+        }}
+        onOpenInvoice={(res, fol) => {
+          setSelectedResForInvoice(res);
+          setIsInvoiceOpen(true);
+        }}
+      />
+
+      {/* 3. Group Room Move Modal */}
+      <GroupRoomMoveModal
+        isOpen={isRoomMoveOpen}
+        onClose={() => setIsRoomMoveOpen(false)}
+        reservation={selectedResForMove}
+        rooms={state.rooms}
+        roomTypes={state.roomTypes}
+        onMoveRoom={handleMoveRoom}
+      />
+
+      {/* 4. Branded Booking Voucher Modal */}
+      <BookingVoucherModal
+        isOpen={isVoucherOpen}
+        onClose={() => setIsVoucherOpen(false)}
+        reservation={selectedResForVoucher}
+        property={state.property}
+      />
+
+      {/* 5. Legal Indian GST Tax Invoice Modal */}
+      <GstInvoiceModal
+        isOpen={isInvoiceOpen}
+        onClose={() => setIsInvoiceOpen(false)}
+        reservation={selectedResForInvoice}
+        folio={selectedResForInvoice ? state.folios[selectedResForInvoice.folioId] : null}
+        property={state.property}
+      />
+
+      {/* 6. Maintenance Block Modal */}
+      <MaintenanceBlockModal
+        isOpen={isMaintenanceOpen}
+        onClose={() => setIsMaintenanceOpen(false)}
+        initialData={maintenanceInitialData}
+        rooms={state.rooms}
+        onSubmit={handleAddMaintenanceBlock}
+        onDelete={handleDeleteMaintenanceBlock}
+      />
+    </div>
+  );
+}

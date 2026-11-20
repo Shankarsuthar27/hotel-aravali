@@ -1,0 +1,758 @@
+/* ==========================================================================
+   Rates, Inventory & Channel Manager — Synchronized 4-Region Sticky Grid
+   ========================================================================== */
+
+/* Main Page Container — fixed viewport height, zero outer page scroll */
+.rates-page-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-height: 100%;
+  width: 100%;
+  background-color: #ffffff;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", Arial, sans-serif;
+  color: #0f172a;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+/* 1A. Top Fixed Tab Bar (Rates, Minimum Nights, Stop Sell) */
+.rates-top-tabs-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  background-color: #ffffff;
+  border-bottom: 1px solid #e5e7eb;
+  flex-shrink: 0;
+  z-index: 50;
+}
+
+.rates-top-tabs-bar .sliding-tabs-container {
+  border-bottom: none;
+}
+
+/* 1B. Fixed Secondary Filter & Action Toolbar */
+.rates-sub-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 24px;
+  background-color: #ffffff;
+  border-bottom: 1px solid #e5e7eb;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  gap: 14px;
+  z-index: 48;
+}
+
+.rates-room-filter-select {
+  appearance: none;
+  background-color: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 8px 36px 8px 14px;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: #1e293b;
+  cursor: pointer;
+  outline: none;
+  transition: all 0.15s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.rates-room-filter-select:hover {
+  border-color: #cbd5e1;
+}
+
+.rates-room-filter-select:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+}
+
+/* Radio button group */
+.rates-radio-group {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  margin-left: 6px;
+}
+
+.rates-radio-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: #475569;
+  transition: color 0.15s ease;
+}
+
+.rates-radio-label:hover {
+  color: #0f172a;
+}
+
+.rates-radio-label.active {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.rates-radio-label input[type="radio"] {
+  width: 16px;
+  height: 16px;
+  accent-color: #2563eb;
+  cursor: pointer;
+}
+
+/* Top Action Buttons */
+.rates-action-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 18px;
+  background-color: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #0f172a;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.rates-action-btn-secondary:hover {
+  background-color: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+.rates-action-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 24px;
+  background-color: #2563eb;
+  border: none;
+  border-radius: 8px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #ffffff;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-shadow: 0 1px 3px rgba(37, 99, 235, 0.25);
+}
+
+.rates-action-btn-primary:hover {
+  background-color: #1d4ed8;
+}
+
+.rates-action-btn-primary.idle {
+  background-color: #60a5fa;
+  box-shadow: 0 1px 2px rgba(96, 165, 250, 0.28);
+}
+
+.rates-action-btn-primary.idle:hover {
+  background-color: #3b82f6;
+}
+
+/* ==========================================================================
+   2. Unified Multi-Axis Sticky Scroll Viewport
+   Single scroll container ensures ZERO horizontal lag or desync across
+   Date Header, Room/Rate Rows, and Bottom Summary Footer.
+   ========================================================================== */
+
+.rates-grid-viewport {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
+  background-color: #ffffff;
+  position: relative;
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+.rates-grid-viewport::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.rates-grid-viewport::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.rates-grid-viewport::-webkit-scrollbar-thumb {
+  background-color: #cbd5e1;
+  border-radius: 9999px;
+}
+
+.rates-grid-viewport::-webkit-scrollbar-thumb:hover {
+  background-color: #94a3b8;
+}
+
+.rates-grid-viewport::-webkit-scrollbar-corner {
+  background: #ffffff;
+}
+
+.rates-grid-table {
+  width: max-content;
+  min-width: 100%;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  box-sizing: border-box;
+}
+
+/* ==========================================================================
+   Region 1: Sticky Top Date Header Row
+   ========================================================================== */
+
+.rates-header-row {
+  display: flex;
+  align-items: stretch;
+  position: sticky;
+  top: 0;
+  background-color: #ffffff;
+  z-index: 30;
+  border-bottom: 1px solid #e5e7eb;
+  transition: box-shadow 0.18s ease;
+}
+
+.rates-grid-viewport.scrolled-y .rates-header-row {
+  box-shadow: 0 6px 14px -6px rgba(15, 23, 42, 0.14);
+}
+
+/* ==========================================================================
+   Region 2: Sticky Left Column (Rooms, Rate Plans, Info Icons)
+   ========================================================================== */
+
+.rates-col-left {
+  width: 242px;
+  min-width: 242px;
+  max-width: 242px;
+  flex-shrink: 0;
+  position: sticky;
+  left: 0;
+  z-index: 20;
+  background-color: #ffffff;
+  border-right: 1px solid #e5e7eb;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  transition: box-shadow 0.18s ease;
+}
+
+.rates-grid-viewport.scrolled-x .rates-col-left {
+  box-shadow: 6px 0 14px -6px rgba(15, 23, 42, 0.14);
+}
+
+/* Top-Left Corner Cell: Pinned to BOTH top and left (highest z-index) */
+.rates-header-left {
+  z-index: 45 !important;
+  padding: 10px 12px 10px 16px;
+  gap: 8px;
+  justify-content: space-between;
+  background-color: #ffffff;
+}
+
+/* Right-Edge Sticky Pagination Column (flanks date columns on right) */
+.rates-header-right-nav {
+  width: 44px;
+  min-width: 44px;
+  flex-shrink: 0;
+  position: sticky;
+  right: 0;
+  z-index: 40;
+  background-color: #ffffff;
+  border-left: 1px solid #e5e7eb;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: -6px 0 12px -6px rgba(15, 23, 42, 0.08);
+  box-sizing: border-box;
+}
+
+.rates-right-spacer {
+  width: 44px;
+  min-width: 44px;
+  flex-shrink: 0;
+  position: sticky;
+  right: 0;
+  z-index: 15;
+  background-color: #ffffff;
+  border-left: 1px solid #f1f5f9;
+  box-sizing: border-box;
+}
+
+.rates-summary-right-spacer {
+  width: 44px;
+  min-width: 44px;
+  flex-shrink: 0;
+  position: sticky;
+  right: 0;
+  z-index: 35;
+  background-color: #f8fafc;
+  border-left: 1px solid #e5e7eb;
+  box-sizing: border-box;
+}
+
+/* Navigation Arrow Buttons (< and >) */
+.rates-nav-circle-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 9999px;
+  border: 1px solid #e2e8f0;
+  background-color: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #334155;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.rates-nav-circle-btn:hover {
+  background-color: #f1f5f9;
+  color: #0f172a;
+  border-color: #cbd5e1;
+}
+
+.rates-nav-circle-btn:active {
+  transform: scale(0.95);
+}
+
+/* Date Input Pill (18/11/2026) */
+.rates-date-pill {
+  flex: 1;
+  height: 34px;
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+  min-width: 0;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.rates-date-pill:hover {
+  background-color: #ffffff;
+  border-color: #cbd5e1;
+}
+
+.rates-date-pill-text {
+  font-size: 13px;
+  font-weight: 600;
+  color: #0f172a;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+}
+
+/* Horizontal Date Columns Track */
+.rates-cells-track {
+  display: flex;
+  flex: 1;
+  align-items: stretch;
+}
+
+/* Individual Date Header Cell (Fixed width matches body & footer cells 1:1) */
+.rates-date-cell {
+  width: var(--rates-col-width, 78px);
+  min-width: var(--rates-col-width, 78px);
+  max-width: var(--rates-col-width, 78px);
+  flex-shrink: 0;
+  padding: 6px 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  border-right: 1px solid #f1f5f9;
+}
+
+.rates-date-cell.is-weekend {
+  background-color: rgba(255, 247, 237, 0.45);
+}
+
+.rates-date-cell.is-today {
+  background-color: rgba(255, 241, 242, 0.35);
+}
+
+/* Card: TODAY */
+.rates-card-today {
+  width: 100%;
+  height: 68px;
+  border-radius: 7px;
+  background-color: #fff1f2;
+  border: 1px solid #fecdd3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 0;
+  box-sizing: border-box;
+}
+
+/* Card: WEEKDAY */
+.rates-card-weekday {
+  width: 100%;
+  height: 68px;
+  border-radius: 7px;
+  background-color: #ffffff;
+  border: 1px solid #e5e7eb;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 0;
+  box-sizing: border-box;
+}
+
+/* Card: WEEKEND (SAT, SUN) */
+.rates-card-weekend {
+  width: 100%;
+  height: 68px;
+  border-radius: 7px;
+  background-color: #fff7ed;
+  border: 1px solid #fed7aa;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 0;
+  box-sizing: border-box;
+}
+
+.rates-card-dayname {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  line-height: 1.15;
+  letter-spacing: 0.04em;
+}
+
+.rates-card-daynum {
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1.15;
+  margin: 2px 0;
+}
+
+.rates-card-month {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  line-height: 1.15;
+  letter-spacing: 0.04em;
+}
+
+/* ==========================================================================
+   Region 3: Vertically Scrollable Room & Rate Plan Rows
+   ========================================================================== */
+
+.rates-body-rows {
+  display: flex;
+  flex-direction: column;
+  flex: 1 0 auto;
+}
+
+.rates-grid-row {
+  display: flex;
+  align-items: stretch;
+  min-height: 46px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.rates-grid-row.rates-room-header-row {
+  background-color: #fafbfc;
+  min-height: 44px;
+}
+
+.rates-grid-row.rates-room-header-row .rates-col-left {
+  background-color: #fafbfc;
+}
+
+.rates-grid-row.rates-plan-last-row {
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.rates-room-name-cell {
+  gap: 10px;
+  padding: 8px 14px 8px 20px;
+}
+
+.rates-room-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #0f172a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rates-ratecode-cell {
+  gap: 8px;
+  padding: 8px 14px 8px 34px;
+  justify-content: space-between;
+}
+
+.rates-ratecode-text {
+  font-size: 13px;
+  font-weight: 600;
+  color: #475569;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rates-info-btn {
+  border: none;
+  background: transparent;
+  padding: 4px;
+  border-radius: 6px;
+  color: #94a3b8;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s ease, background-color 0.15s ease;
+  flex-shrink: 0;
+}
+
+.rates-info-btn:hover {
+  color: #2563eb;
+  background-color: #eff6ff;
+}
+
+.rates-info-tooltip {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  box-shadow: 0 12px 28px -6px rgba(15, 23, 42, 0.18);
+  padding: 12px 14px;
+  z-index: 60;
+  width: 220px;
+}
+
+/* Rate / Inventory Body Cells */
+.rates-cell {
+  width: var(--rates-col-width, 78px);
+  min-width: var(--rates-col-width, 78px);
+  max-width: var(--rates-col-width, 78px);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 4px;
+  box-sizing: border-box;
+  border-right: 1px solid #f1f5f9;
+  background-color: transparent;
+  transition: background-color 0.12s ease;
+}
+
+.rates-cell.is-weekend {
+  background-color: rgba(255, 247, 237, 0.6);
+}
+
+.rates-cell.is-today {
+  background-color: rgba(255, 241, 242, 0.35);
+}
+
+.rates-inv-num {
+  font-size: 13px;
+  font-weight: 600;
+  color: #475569;
+}
+
+.rates-inv-num.zero {
+  color: #ef4444;
+  font-weight: 700;
+}
+
+/* Editable Rate / Min Nights Input Cards */
+.rates-cell-input-card {
+  width: 64px;
+  height: 34px;
+  background-color: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 7px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+}
+
+.rates-cell-input-card:hover {
+  border-color: #cbd5e1;
+}
+
+.rates-cell-input-card:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2.5px rgba(37, 99, 235, 0.16);
+}
+
+.rates-cell-input-card.is-dirty {
+  border-color: #3b82f6;
+  background-color: #eff6ff;
+  color: #1d4ed8;
+}
+
+.rates-cell-input-card::-webkit-outer-spin-button,
+.rates-cell-input-card::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.rates-cell-input-card[type=number] {
+  -moz-appearance: textfield;
+}
+
+/* Stop Sell Toggle Pill */
+.rates-stopsell-btn {
+  width: 62px;
+  height: 30px;
+  border-radius: 7px;
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: 1px solid #bbf7d0;
+  background-color: #f0fdf4;
+  color: #15803d;
+}
+
+.rates-stopsell-btn:hover {
+  filter: brightness(0.97);
+}
+
+.rates-stopsell-btn.is-closed {
+  border-color: #fecaca;
+  background-color: #fef2f2;
+  color: #dc2626;
+}
+
+/* ==========================================================================
+   Region 4: Sticky Bottom Summary Footer (Sold, Available, Total Rooms)
+   ========================================================================== */
+
+.rates-summary-section {
+  display: flex;
+  flex-direction: column;
+  background-color: #f8fafc;
+  position: sticky;
+  bottom: 0;
+  z-index: 30;
+  margin-top: auto;
+  border-top: 1px solid #e5e7eb;
+  transition: box-shadow 0.18s ease;
+}
+
+.rates-grid-viewport.has-scroll-below .rates-summary-section {
+  box-shadow: 0 -6px 14px -6px rgba(15, 23, 42, 0.14);
+}
+
+.rates-summary-row {
+  display: flex;
+  align-items: stretch;
+  min-height: 40px;
+  border-top: 1px solid #e5e7eb;
+  background-color: #f8fafc;
+}
+
+.rates-summary-row:first-child {
+  border-top: none;
+}
+
+.rates-summary-title-cell {
+  padding: 6px 14px 6px 20px;
+  position: sticky;
+  left: 0;
+  z-index: 40 !important;
+  background-color: #f8fafc;
+  border-right: 1px solid #e5e7eb;
+}
+
+.rates-summary-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.rates-summary-cell {
+  width: var(--rates-col-width, 78px);
+  min-width: var(--rates-col-width, 78px);
+  max-width: var(--rates-col-width, 78px);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #f8fafc;
+  border-right: 1px solid #e5e7eb;
+  box-sizing: border-box;
+}
+
+.rates-summary-cell.is-weekend {
+  background-color: #fff7ed;
+}
+
+.rates-summary-cell.is-today {
+  background-color: #fff1f2;
+}
+
+.rates-summary-num {
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.rates-summary-num.sold {
+  color: #2563eb;
+}
+
+.rates-summary-num.avail {
+  color: #16a34a;
+}
+
+/* Notification Toast */
+.pms-toast-notification {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background-color: #0f172a;
+  color: #ffffff;
+  padding: 10px 18px;
+  border-radius: 8px;
+  font-size: 13.5px;
+  font-weight: 600;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.25);
+  z-index: 1000;
+  animation: pmsToastFade 0.2s ease forwards;
+}
+
+@keyframes pmsToastFade {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
