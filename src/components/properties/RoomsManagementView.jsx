@@ -14,6 +14,7 @@ import ConfirmDeleteModal from '../common/ConfirmDeleteModal';
 export default function RoomsManagementView({
   roomTypes = [],
   rooms = [],
+  reservations = [],
   activeTab = 'room-types',
   onTabChange,
   triggerAddRoomType = 0,
@@ -36,27 +37,33 @@ export default function RoomsManagementView({
   // Delete confirmation modal state
   const [deleteModalState, setDeleteModalState] = useState(null);
 
+  const isRoomAssignedOrOccupied = (rm) => {
+    if (!rm) return false;
+    const isOccupied = rm.operational === 'occupied';
+    const isAllocated = rm.operational === 'allocated' || Boolean(rm.currentReservationId);
+    const hasGuest = Boolean(rm.currentGuestName && String(rm.currentGuestName).trim() !== '');
+    const hasActiveRes = (reservations || []).some(
+      (res) =>
+        (res.status === 'in_house' || res.status === 'confirmed') &&
+        (res.roomId === rm.id || String(res.roomNumber) === String(rm.roomNumber))
+    );
+    return isOccupied || isAllocated || hasGuest || hasActiveRes;
+  };
+
   const isRoomTypeAssigned = (roomType) => {
     if (!roomType || !rooms || !rooms.length) return false;
     return rooms.some((rm) => {
       if (!rm) return false;
-      if (
-        rm.roomTypeId &&
-        (rm.roomTypeId === roomType.id ||
-          String(rm.roomTypeId).toLowerCase() === String(roomType.id).toLowerCase())
-      ) {
-        return true;
-      }
-      if (roomType.code && rm.roomTypeId === roomType.code) {
-        return true;
-      }
-      if (
-        roomType.name &&
-        (rm.roomType === roomType.name || rm.roomTypeName === roomType.name)
-      ) {
-        return true;
-      }
-      return false;
+      const matchesType =
+        (rm.roomTypeId &&
+          (rm.roomTypeId === roomType.id ||
+            String(rm.roomTypeId).toLowerCase() === String(roomType.id).toLowerCase())) ||
+        (roomType.code && rm.roomTypeId === roomType.code) ||
+        (roomType.name &&
+          (rm.roomType === roomType.name || rm.roomTypeName === roomType.name));
+
+      // ONLY block deletion if a room of this type is currently assigned or occupied!
+      return matchesType && isRoomAssignedOrOccupied(rm);
     });
   };
 
@@ -88,8 +95,26 @@ export default function RoomsManagementView({
         showToast(`Deleted room type "${deleteModalState.name}"`);
       }
     } else if (deleteModalState.type === 'room') {
+      const targetRm = rooms.find((r) => r.id === deleteModalState.id);
+      if (targetRm && isRoomAssignedOrOccupied(targetRm)) {
+        setDeleteModalState(null);
+        if (showToast) {
+          showToast('This room is currently assigned or occupied and cannot be deleted.', 'error');
+        }
+        return;
+      }
       if (onDeleteRoom) {
-        onDeleteRoom(deleteModalState.id);
+        const res = onDeleteRoom(deleteModalState.id);
+        if (res && res.success === false) {
+          setDeleteModalState(null);
+          if (showToast) {
+            showToast(
+              res.message || 'This room is currently assigned or occupied and cannot be deleted.',
+              'error'
+            );
+          }
+          return;
+        }
       }
       if (showToast) {
         showToast(`Deleted room ${deleteModalState.name}`);
@@ -625,6 +650,15 @@ export default function RoomsManagementView({
                             className="properties-action-item delete"
                             onClick={() => {
                               setActiveMenuId(null);
+                              if (isRoomAssignedOrOccupied(rm)) {
+                                if (showToast) {
+                                  showToast(
+                                    'This room is currently assigned or occupied and cannot be deleted.',
+                                    'error'
+                                  );
+                                }
+                                return;
+                              }
                               setDeleteModalState({
                                 type: 'room',
                                 id: rm.id,

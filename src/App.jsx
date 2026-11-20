@@ -831,6 +831,7 @@ export default function App() {
               mealPlans={state.mealPlans || []}
               roomTypes={state.roomTypes || []}
               rooms={state.rooms || []}
+              reservations={state.reservations || []}
               ratePlans={state.ratePlans || []}
               taxRules={state.taxRules || []}
               serviceCharges={state.serviceCharges || []}
@@ -867,7 +868,12 @@ export default function App() {
                 pmsStore.updateRoom(id, patch);
               }}
               onDeleteRoom={(id) => {
-                pmsStore.deleteRoom(id);
+                const res = pmsStore.deleteRoom(id);
+                if (res && res.success === false) {
+                  showToast(res.message, 'error');
+                  return res;
+                }
+                return { success: true };
               }}
               onCreateRatePlan={(data) => {
                 pmsStore.addRatePlan(data);

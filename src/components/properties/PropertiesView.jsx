@@ -15,6 +15,7 @@ export default function PropertiesView({
   mealPlans = [],
   roomTypes = [],
   rooms = [],
+  reservations = [],
   ratePlans = [],
   taxRules = [],
   serviceCharges = [],
@@ -191,6 +192,7 @@ export default function PropertiesView({
         <RoomsManagementView
           roomTypes={roomTypes}
           rooms={rooms}
+          reservations={reservations}
           activeTab={roomsActiveTab}
           onTabChange={setRoomsActiveTab}
           triggerAddRoomType={triggerAddRoomType}

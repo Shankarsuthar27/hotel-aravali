@@ -4525,9 +4525,43 @@ class PMSStore {
            String(r.roomTypeId).toLowerCase() === String(roomTypeId).toLowerCase() ||
            (rt && (r.roomTypeId === rt.id || r.roomTypeId === rt.code || r.roomType === rt.name || r.roomTypeName === rt.name))
     );
-    if (assignedRooms.length > 0) {
+
+    const isRoomAssignedOrOccupied = (rm) => {
+      if (!rm) return false;
+      const isOccupied = rm.operational === 'occupied';
+      const isAllocated = rm.operational === 'allocated' || Boolean(rm.currentReservationId);
+      const hasGuest = Boolean(rm.currentGuestName && String(rm.currentGuestName).trim() !== '');
+      const hasActiveRes = (this.reservations || []).some(
+        res => (res.status === 'in_house' || res.status === 'confirmed') &&
+               (res.roomId === rm.id || String(res.roomNumber) === String(rm.roomNumber))
+      );
+      return isOccupied || isAllocated || hasGuest || hasActiveRes;
+    };
+
+    const hasBusyRooms = assignedRooms.some(isRoomAssignedOrOccupied);
+    if (hasBusyRooms) {
       return { success: false, message: 'This room type is assigned to one or more rooms and cannot be deleted.' };
     }
+
+    // Unlink unassigned rooms that were attached to this room type
+    this.rooms = (this.rooms || []).map(r => {
+      const isMatch = r.roomTypeId === roomTypeId ||
+                      String(r.roomTypeId).toLowerCase() === String(roomTypeId).toLowerCase() ||
+                      (rt && (r.roomTypeId === rt.id || r.roomTypeId === rt.code || r.roomType === rt.name || r.roomTypeName === rt.name));
+      if (isMatch) {
+        const unlinked = {
+          ...r,
+          roomTypeId: '',
+          roomType: 'Unassigned',
+          roomTypeName: 'Unassigned',
+          updatedAt: new Date().toISOString()
+        };
+        this.syncDocToFirestore('rooms', unlinked.id, unlinked);
+        return unlinked;
+      }
+      return r;
+    });
+
     this.roomTypes = (this.roomTypes || []).filter(r => r.id !== roomTypeId && r.code !== roomTypeId);
     if (!this.deletedRoomTypeIds) this.deletedRoomTypeIds = new Set();
     this.deletedRoomTypeIds.add(String(roomTypeId));
@@ -4636,6 +4670,20 @@ class PMSStore {
       const rNumKey = String(r.roomNumber || r.id || '').trim().toLowerCase().replace(/^rm_/, '');
       return r.id === roomId || r.roomNumber === roomId || (targetNumKey && rNumKey === targetNumKey);
     });
+
+    if (rm) {
+      const isOccupied = rm.operational === 'occupied';
+      const isAllocated = rm.operational === 'allocated' || Boolean(rm.currentReservationId);
+      const hasGuest = Boolean(rm.currentGuestName && String(rm.currentGuestName).trim() !== '');
+      const hasActiveRes = (this.reservations || []).some(
+        res => (res.status === 'in_house' || res.status === 'confirmed') &&
+               (res.roomId === rm.id || String(res.roomNumber) === String(rm.roomNumber))
+      );
+      if (isOccupied || isAllocated || hasGuest || hasActiveRes) {
+        return { success: false, message: 'This room is currently assigned or occupied and cannot be deleted.' };
+      }
+    }
+
     const rmNumKey = rm
       ? String(rm.roomNumber || rm.id || '').trim().toLowerCase().replace(/^rm_/, '')
       : targetNumKey;
