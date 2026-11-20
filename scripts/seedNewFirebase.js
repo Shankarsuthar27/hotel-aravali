@@ -3,8 +3,8 @@
 // Seeds all 16 collections in root and nested under /properties/prop_astha_01/
 // ==============================================================================
 
-import { initializeApp } from "firebase/app";
-import { getFirestore, doc, setDoc, writeBatch } from "firebase/firestore";
+import { initializeApp } from "@firebase/app";
+import { getFirestore, doc, setDoc, writeBatch } from "@firebase/firestore";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -48,13 +48,13 @@ if (fs.existsSync(envPath)) {
 }
 
 const firebaseConfig = {
-  apiKey: process.env.VITE_FIREBASE_API_KEY || env.VITE_FIREBASE_API_KEY || "AIzaSyBBWLypsUHMSdHgGada6NArXKrKEKhWMEE",
-  authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN || env.VITE_FIREBASE_AUTH_DOMAIN || "hotel-aravli.firebaseapp.com",
-  projectId: process.env.VITE_FIREBASE_PROJECT_ID || env.VITE_FIREBASE_PROJECT_ID || "hotel-aravli",
-  storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET || env.VITE_FIREBASE_STORAGE_BUCKET || "hotel-aravli.firebasestorage.app",
-  messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || env.VITE_FIREBASE_MESSAGING_SENDER_ID || "903701520719",
-  appId: process.env.VITE_FIREBASE_APP_ID || env.VITE_FIREBASE_APP_ID || "1:903701520719:web:40abd86ff0ddf21e53a53a",
-  measurementId: process.env.VITE_FIREBASE_MEASUREMENT_ID || env.VITE_FIREBASE_MEASUREMENT_ID || "G-4WK1DET0YB"
+  apiKey: process.env.VITE_FIREBASE_API_KEY || env.VITE_FIREBASE_API_KEY || "AIzaSyDjV73OruUnFyYPpmk0D9_YjXzCkkygPKo",
+  authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN || env.VITE_FIREBASE_AUTH_DOMAIN || "hotel-aravali-20101.firebaseapp.com",
+  projectId: process.env.VITE_FIREBASE_PROJECT_ID || env.VITE_FIREBASE_PROJECT_ID || "hotel-aravali-20101",
+  storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET || env.VITE_FIREBASE_STORAGE_BUCKET || "hotel-aravali-20101.firebasestorage.app",
+  messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || env.VITE_FIREBASE_MESSAGING_SENDER_ID || "70247603413",
+  appId: process.env.VITE_FIREBASE_APP_ID || env.VITE_FIREBASE_APP_ID || "1:70247603413:web:8e264861de08cb6aff165c",
+  measurementId: process.env.VITE_FIREBASE_MEASUREMENT_ID || env.VITE_FIREBASE_MEASUREMENT_ID || "G-Y2CT5YWTMP"
 };
 
 const PROPERTY_ID = process.env.VITE_PROPERTY_ID || env.VITE_PROPERTY_ID || "prop_astha_01";
@@ -195,3 +195,4 @@ async function seedAll16Collections() {
 }
 
 seedAll16Collections();
+
