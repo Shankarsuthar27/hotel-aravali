@@ -41,21 +41,6 @@ export const initialProperty = {
 
 export const initialRoomTypes = [
   {
-    id: 'rt_ultra_premium',
-    name: 'Ultra Premium',
-    code: 'ULP',
-    description: 'Ultra luxurious presidential suite with panoramic views and dedicated butler.',
-    baseAdults: 2,
-    maxAdults: 4,
-    baseChildren: 1,
-    maxChildren: 2,
-    basePrice: 6500,
-    extraAdultPrice: 2000,
-    extraChildPrice: 1000,
-    status: 'ACTIVE',
-    color: '#10b981'
-  },
-  {
     id: 'rt_deluxe',
     name: 'Delux Room',
     code: 'DXL',
@@ -103,7 +88,6 @@ export const initialRoomTypes = [
 ];
 
 export const initialRooms = [
-  { id: 'rm_501', roomNumber: '501', roomTypeId: 'rt_ultra_premium', floor: '5', status: 'clean', operational: 'available', notes: 'Ready for check-in' },
   { id: 'rm_101', roomNumber: '101', roomTypeId: 'rt_deluxe', floor: '1', status: 'clean', operational: 'available', notes: 'Turnaround required post check-out' },
   { id: 'rm_102', roomNumber: '102', roomTypeId: 'rt_deluxe', floor: '1', status: 'clean', operational: 'available', notes: '' },
   { id: 'rm_301', roomNumber: '301', roomTypeId: 'rt_premium', floor: '3', status: 'clean', operational: 'available', notes: 'Ready for check-in' },
