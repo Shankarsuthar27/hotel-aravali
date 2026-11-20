@@ -39,15 +39,22 @@ export default function RoomsManagementView({
 
   const isRoomAssignedOrOccupied = (rm) => {
     if (!rm) return false;
-    const isOccupied = rm.operational === 'occupied';
-    const isAllocated = rm.operational === 'allocated' || Boolean(rm.currentReservationId);
-    const hasGuest = Boolean(rm.currentGuestName && String(rm.currentGuestName).trim() !== '');
-    const hasActiveRes = (reservations || []).some(
-      (res) =>
-        (res.status === 'in_house' || res.status === 'confirmed') &&
-        (res.roomId === rm.id || String(res.roomNumber) === String(rm.roomNumber))
-    );
-    return isOccupied || isAllocated || hasGuest || hasActiveRes;
+    const hasActiveRes = (reservations || []).some((res) => {
+      if (!res) return false;
+      const st = String(res.status || '').toLowerCase().replace(/[\s-]+/g, '_');
+      if (st === 'cancelled' || st === 'canceled' || st === 'checked_out' || st === 'no_show' || st === 'departed') {
+        return false;
+      }
+      const rNum = String(rm.roomNumber || rm.id || '').trim().toLowerCase().replace(/^rm_/, '');
+      const resRoomNum = String(res.roomNumber || res.roomNum || '').trim().toLowerCase().replace(/^rm_/, '');
+      const resRoomId = String(res.roomId || '').trim().toLowerCase();
+      const rmId = String(rm.id || '').trim().toLowerCase();
+      return (
+        (resRoomId && (resRoomId === rmId || resRoomId === `rm_${rNum}` || resRoomId === rNum)) ||
+        (rNum && resRoomNum && resRoomNum === rNum)
+      );
+    });
+    return hasActiveRes;
   };
 
   const isRoomTypeAssigned = (roomType) => {
@@ -58,9 +65,7 @@ export default function RoomsManagementView({
         (rm.roomTypeId &&
           (rm.roomTypeId === roomType.id ||
             String(rm.roomTypeId).toLowerCase() === String(roomType.id).toLowerCase())) ||
-        (roomType.code && rm.roomTypeId === roomType.code) ||
-        (roomType.name &&
-          (rm.roomType === roomType.name || rm.roomTypeName === roomType.name));
+        (roomType.code && rm.roomTypeId === roomType.code);
 
       // ONLY block deletion if a room of this type is currently assigned or occupied!
       return matchesType && isRoomAssignedOrOccupied(rm);

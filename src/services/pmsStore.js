@@ -55,13 +55,7 @@ class PMSStore {
     this.deletedRoomTypeIds = new Set();
     this.deletedTeamMemberIds = new Set();
     try {
-      const rawDeleted = localStorage.getItem('pms_deleted_entities');
-      if (rawDeleted) {
-        const parsedDel = JSON.parse(rawDeleted);
-        (parsedDel.rooms || []).forEach((id) => this.deletedRoomIds.add(String(id)));
-        (parsedDel.roomTypes || []).forEach((id) => this.deletedRoomTypeIds.add(String(id)));
-        (parsedDel.teamMembers || []).forEach((id) => this.deletedTeamMemberIds.add(String(id)));
-      }
+      localStorage.removeItem('pms_deleted_entities');
     } catch (_) {}
     const authSaved = localStorage.getItem('pms_is_authenticated');
     let savedSessionUser = null;
@@ -80,10 +74,6 @@ class PMSStore {
         if (parsed.isAuthenticated === true && authSaved === null && (savedSessionUser || parsed.currentUser)) {
           this.isAuthenticated = true;
         }
-        (parsed.deletedReservationIds || []).forEach((id) => this.deletedReservationIds.add(String(id)));
-        (parsed.deletedRoomIds || []).forEach((id) => this.deletedRoomIds.add(String(id)));
-        (parsed.deletedRoomTypeIds || []).forEach((id) => this.deletedRoomTypeIds.add(String(id)));
-        (parsed.deletedTeamMemberIds || []).forEach((id) => this.deletedTeamMemberIds.add(String(id)));
         this.property = parsed.property || initialProperty;
         if (this.property) {
           const todayStr = getTodayIsoDate();
@@ -144,83 +134,6 @@ class PMSStore {
         } else {
           this.rooms = parsed.rooms;
         }
-        if (this.deletedRoomIds && this.deletedRoomIds.size > 0) {
-          this.rooms = (this.rooms || []).filter((r) => {
-            const numKey = String(r.roomNumber || r.id || '').trim().toLowerCase().replace(/^rm_/, '');
-            return (
-              !this.deletedRoomIds.has(String(r.id)) &&
-              !this.deletedRoomIds.has(String(r.roomNumber || '')) &&
-              !this.deletedRoomIds.has(numKey) &&
-              !this.deletedRoomIds.has(`rm_${numKey}`)
-            );
-          });
-        }
-        if (this.deletedRoomTypeIds && this.deletedRoomTypeIds.size > 0) {
-          this.roomTypes = (this.roomTypes || []).filter(
-            (rt) =>
-              !this.deletedRoomTypeIds.has(String(rt.id)) &&
-              !this.deletedRoomTypeIds.has(String(rt.code || '')) &&
-              !this.deletedRoomTypeIds.has(String(rt.name || '').toLowerCase())
-          );
-        }
-
-        const isRtDeleted = (id, code, name) =>
-          this.deletedRoomTypeIds &&
-          (this.deletedRoomTypeIds.has(id) ||
-            this.deletedRoomTypeIds.has(code) ||
-            this.deletedRoomTypeIds.has(String(name || '').toLowerCase()));
-
-        const isRmDeleted = (num) => {
-          if (!this.deletedRoomIds) return false;
-          const k = String(num).trim().toLowerCase();
-          return this.deletedRoomIds.has(`rm_${k}`) || this.deletedRoomIds.has(k) || this.deletedRoomIds.has(String(num));
-        };
-
-        
-
-        let rtPremium = this.roomTypes.find(rt => rt.id === 'rt_premium' || rt.name === 'Premium');
-        if (!rtPremium && !isRtDeleted('rt_premium', 'PRM', 'Premium')) {
-          rtPremium = {
-            id: 'rt_premium',
-            name: 'Premium',
-            code: 'PRM',
-            description: 'Luxury premium suite with jacuzzi and executive lounge access.',
-            baseAdults: 4,
-            maxAdults: 6,
-            baseChildren: 2,
-            maxChildren: 4,
-            basePrice: 4500,
-            status: 'ACTIVE',
-            color: '#8b5cf6'
-          };
-          this.roomTypes.push(rtPremium);
-        }
-
-        // Seed rooms 501, 301, 302 only if neither the room nor its room type was deleted by the user
-        
-        if (rtPremium && !isRmDeleted('301') && !this.rooms.some(r => String(r.roomNumber) === '301')) {
-          this.rooms.push({
-            id: 'rm_301',
-            roomNumber: '301',
-            roomTypeId: rtPremium.id,
-            floor: '3',
-            status: 'clean',
-            operational: 'available',
-            notes: 'Ready for check-in'
-          });
-        }
-        if (rtPremium && !isRmDeleted('302') && !this.rooms.some(r => String(r.roomNumber) === '302')) {
-          this.rooms.push({
-            id: 'rm_302',
-            roomNumber: '302',
-            roomTypeId: rtPremium.id,
-            floor: '3',
-            status: 'dirty',
-            operational: 'available',
-            notes: 'Ready for check-in'
-          });
-        }
-
         const roomTypeOrder = { 'Ultra Premium': 1, 'Delux Room': 2, 'Premium': 3, 'Normal': 4 };
         this.roomTypes.sort((a, b) => (roomTypeOrder[a.name] || 99) - (roomTypeOrder[b.name] || 99));
         let loadedPlans = (parsed.mealPlans || initialMealPlans).filter(
@@ -522,7 +435,6 @@ class PMSStore {
   dedupeRoomsByNumber(roomsList, pruneCloudDuplicates = false) {
     const byNum = new Map();
     const duplicateDocIdsToPrune = [];
-    const deletedSet = this.deletedRoomIds || new Set();
 
     const getRoomUpdatedMs = (r) => {
       const ts = r?.updatedAt || r?.lastSyncedAt || '';
@@ -535,16 +447,6 @@ class PMSStore {
       const rawNum = String(rm.roomNumber || rm.id || '').trim();
       const numKey = rawNum.toLowerCase().replace(/^rm_/, '');
       if (!numKey) return;
-
-      if (
-        deletedSet.has(String(rm.id)) ||
-        (rm._firestoreDocId && deletedSet.has(String(rm._firestoreDocId))) ||
-        deletedSet.has(String(rm.roomNumber || '')) ||
-        deletedSet.has(numKey) ||
-        deletedSet.has(`rm_${numKey}`)
-      ) {
-        return;
-      }
 
       const canonicalId = `rm_${numKey}`;
       const existing = byNum.get(numKey);
@@ -692,25 +594,14 @@ class PMSStore {
       propertiesList: (this.propertiesList || ['HOTEL ASTHA']).filter(p => p !== 'HOTEL ASTHA RESORT'),
       currentUser: this.isAuthenticated ? this.currentUser : null,
       isAuthenticated: this.isAuthenticated === true && !!this.currentUser,
-      invitationTokens: this.invitationTokens || [],
-      deletedReservationIds: Array.from(this.deletedReservationIds || []),
-      deletedRoomIds: Array.from(this.deletedRoomIds || []),
-      deletedRoomTypeIds: Array.from(this.deletedRoomTypeIds || []),
-      deletedTeamMemberIds: Array.from(this.deletedTeamMemberIds || [])
+      invitationTokens: this.invitationTokens || []
     };
     try {
       if (this.isAuthenticated && this.currentUser) {
         localStorage.setItem('pms_is_authenticated', 'true');
         localStorage.setItem('pms_current_user', JSON.stringify(this.currentUser));
       }
-      localStorage.setItem(
-        'pms_deleted_entities',
-        JSON.stringify({
-          rooms: Array.from(this.deletedRoomIds || []),
-          roomTypes: Array.from(this.deletedRoomTypeIds || []),
-          teamMembers: Array.from(this.deletedTeamMemberIds || [])
-        })
-      );
+      localStorage.removeItem('pms_deleted_entities');
       localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
     } catch (e) {
       console.warn('LocalStorage write warning:', e);
@@ -968,44 +859,19 @@ class PMSStore {
             const data = d.data() || {};
             return { ...data, id: data.id || d.id, _firestoreDocId: d.id };
           });
-          const deletedSet = this.deletedRoomIds || new Set();
 
-          const isRoomDeleted = (cr) => {
-            const numKey = String(cr.roomNumber || cr.id || '').trim().toLowerCase().replace(/^rm_/, '');
-            return (
-              deletedSet.has(String(cr._firestoreDocId)) ||
-              deletedSet.has(String(cr.id)) ||
-              deletedSet.has(String(cr.roomNumber || '')) ||
-              deletedSet.has(numKey) ||
-              deletedSet.has(`rm_${numKey}`)
-            );
-          };
-
-          // Prune any cloud room docs that were explicitly deleted locally (using actual Firestore doc id!)
-          const survivingCloudRooms = [];
-          cloudRooms.forEach((cr) => {
-            if (isRoomDeleted(cr)) {
-              this.deleteDocFromFirestore('rooms', cr._firestoreDocId);
-              if (cr.id && cr.id !== cr._firestoreDocId) {
-                this.deleteDocFromFirestore('rooms', cr.id);
-              }
-            } else {
-              survivingCloudRooms.push(cr);
-            }
-          });
-
-          if (survivingCloudRooms.length > 0 || cloudRooms.length > 0) {
-            const deduped = this.dedupeRoomsByNumber(survivingCloudRooms, true);
+          if (cloudRooms.length > 0) {
+            const deduped = this.dedupeRoomsByNumber(cloudRooms, false);
             this.rooms = this.sanitizeStaleOccupiedRooms(deduped, this.reservations);
           } else if (!this.rooms || this.rooms.length === 0) {
-            this.rooms = (initialRooms || []).filter((r) => !isRoomDeleted(r));
+            this.rooms = initialRooms || [];
           }
           this.cloudStatus = 'LIVE';
           this.save();
           this.notify();
         },
         (err) => {
-          console.warn('[Firebase Firestore] Rooms listener note:', err.message);
+          console.warn('[Firebase Firestore] Rooms listener note:', err?.message);
         }
       );
       this.unsubscribers.push(unsubRooms);
@@ -1117,83 +983,25 @@ class PMSStore {
       );
       this.unsubscribers.push(unsubRp);
 
-      // 9. Real-time Listener: Room Types (merge local + cloud and respect deletions)
+      // 9. Real-time Listener: Room Types
       const rtCol = collection(db, 'properties', this.propertyId, 'roomTypes');
       const unsubRt = onSnapshot(
         rtCol,
         (snapshot) => {
           const cloudRt = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
-          const deletedRt = this.deletedRoomTypeIds || new Set();
-          const map = new Map();
-
-          const isDeleted = (rt) =>
-            deletedRt.has(String(rt.id)) ||
-            (rt.code && deletedRt.has(String(rt.code))) ||
-            (rt.name && deletedRt.has(String(rt.name).toLowerCase()));
-
-          // Prune any cloud room type docs that were explicitly deleted
-          cloudRt.forEach((rt) => {
-            if (isDeleted(rt)) {
-              this.deleteDocFromFirestore('roomTypes', rt.id);
-            }
-          });
-
-          const survivingCloudRt = cloudRt.filter((rt) => !isDeleted(rt));
-          if (survivingCloudRt.length > 0 || cloudRt.length > 0) {
-            this.roomTypes = survivingCloudRt;
+          if (cloudRt.length > 0) {
+            this.roomTypes = cloudRt;
           } else if (!this.roomTypes || this.roomTypes.length === 0) {
-            this.roomTypes = (initialRoomTypes || []).filter((rt) => !isDeleted(rt));
+            this.roomTypes = initialRoomTypes || [];
           }
           this.save();
           this.notify();
         },
-        () => {}
+        (err) => {
+          console.warn('[Firebase Firestore] RoomTypes listener note:', err?.message);
+        }
       );
       this.unsubscribers.push(unsubRt);
-
-      // 10. Real-time Listener: Shared cross-device deleted entities metadata
-      const delMetaRef = doc(db, 'properties', this.propertyId, 'metadata', 'deletedEntities');
-      const unsubDelMeta = onSnapshot(
-        delMetaRef,
-        (snapshot) => {
-          if (!snapshot.exists()) return;
-          const data = snapshot.data() || {};
-          let changed = false;
-          (data.deletedRoomTypeIds || []).forEach((id) => {
-            if (!this.deletedRoomTypeIds.has(String(id))) {
-              this.deletedRoomTypeIds.add(String(id));
-              changed = true;
-            }
-          });
-          (data.deletedRoomIds || []).forEach((id) => {
-            if (!this.deletedRoomIds.has(String(id))) {
-              this.deletedRoomIds.add(String(id));
-              changed = true;
-            }
-          });
-          if (changed) {
-            this.roomTypes = (this.roomTypes || []).filter(
-              (rt) =>
-                !this.deletedRoomTypeIds.has(String(rt.id)) &&
-                !(rt.code && this.deletedRoomTypeIds.has(String(rt.code))) &&
-                !(rt.name && this.deletedRoomTypeIds.has(String(rt.name).toLowerCase()))
-            );
-            this.rooms = (this.rooms || []).filter((r) => {
-              const numKey = String(r.roomNumber || r.id || '').trim().toLowerCase().replace(/^rm_/, '');
-              return (
-                !this.deletedRoomIds.has(String(r.id)) &&
-                !this.deletedRoomIds.has(String(r.roomNumber || '')) &&
-                !this.deletedRoomIds.has(numKey) &&
-                !this.deletedRoomIds.has(`rm_${numKey}`)
-              );
-            });
-            this.save();
-            this.notify();
-          }
-        },
-        () => {}
-      );
-      this.unsubscribers.push(unsubDelMeta);
 
 
       // 10. Real-time Listener: Team Members (merge local + cloud so newly provisioned staff are never wiped)
@@ -1368,23 +1176,12 @@ class PMSStore {
 
   
   async recordDeletionInFirestore() {
-    if (!db) return;
-    try {
-      const metaRef = doc(db, 'properties', this.propertyId, 'metadata', 'deletedEntities');
-      await setDoc(metaRef, {
-        deletedRoomTypeIds: Array.from(this.deletedRoomTypeIds || []),
-        deletedRoomIds: Array.from(this.deletedRoomIds || []),
-        deletedReservationIds: Array.from(this.deletedReservationIds || []),
-        updatedAt: new Date().toISOString()
-      }, { merge: true });
-    } catch (e) {
-      console.warn('[Firebase Cloud] Record deletion error:', e?.message);
-    }
+    // No-op to prevent cross-device feedback loops and quota exhaustion
   }
 
-    async purgeMatchingCloudRooms(roomId, roomNumKey) {
+  async purgeMatchingCloudRooms(roomId, roomNumKey) {
     if (!db) return;
-    const cleanNum = String(roomNumKey || '').trim().toLowerCase();
+    const cleanNum = String(roomNumKey || '').trim().toLowerCase().replace(/^rm_/, '');
     const cleanId = String(roomId || '').trim().toLowerCase();
     try {
       const tasks = [];
@@ -1429,11 +1226,10 @@ class PMSStore {
     }
   }
 
-    async purgeMatchingCloudRoomTypes(roomTypeId, rtCode, rtName) {
+  async purgeMatchingCloudRoomTypes(roomTypeId, rtCode) {
     if (!db) return;
     const idLower = String(roomTypeId || '').trim().toLowerCase();
     const codeLower = String(rtCode || '').trim().toLowerCase();
-    const nameLower = String(rtName || '').trim().toLowerCase();
     try {
       const tasks = [];
       const snapNested = await getDocs(collection(db, 'properties', this.propertyId, 'roomTypes'));
@@ -1442,11 +1238,9 @@ class PMSStore {
         const dIdLower = String(d.id || '').trim().toLowerCase();
         const dataIdLower = String(data.id || '').trim().toLowerCase();
         const dataCodeLower = String(data.code || '').trim().toLowerCase();
-        const dataNameLower = String(data.name || '').trim().toLowerCase();
         if (
           (idLower && (dIdLower === idLower || dataIdLower === idLower)) ||
-          (codeLower && (dIdLower === codeLower || dataCodeLower === codeLower)) ||
-          (nameLower && dataNameLower === nameLower)
+          (codeLower && (dIdLower === codeLower || dataCodeLower === codeLower))
         ) {
           tasks.push(deleteDoc(d.ref).catch(() => {}));
           tasks.push(deleteDoc(doc(db, 'roomTypes', d.id)).catch(() => {}));
@@ -1458,11 +1252,9 @@ class PMSStore {
         const dIdLower = String(d.id || '').trim().toLowerCase();
         const dataIdLower = String(data.id || '').trim().toLowerCase();
         const dataCodeLower = String(data.code || '').trim().toLowerCase();
-        const dataNameLower = String(data.name || '').trim().toLowerCase();
         if (
           (idLower && (dIdLower === idLower || dataIdLower === idLower)) ||
-          (codeLower && (dIdLower === codeLower || dataCodeLower === codeLower)) ||
-          (nameLower && dataNameLower === nameLower)
+          (codeLower && (dIdLower === codeLower || dataCodeLower === codeLower))
         ) {
           tasks.push(deleteDoc(d.ref).catch(() => {}));
         }
@@ -4563,19 +4355,27 @@ class PMSStore {
     const assignedRooms = (this.rooms || []).filter(
       r => r.roomTypeId === roomTypeId ||
            String(r.roomTypeId).toLowerCase() === String(roomTypeId).toLowerCase() ||
-           (rt && (r.roomTypeId === rt.id || r.roomTypeId === rt.code || r.roomType === rt.name || r.roomTypeName === rt.name))
+           (rt && (r.roomTypeId === rt.id || r.roomTypeId === rt.code))
     );
 
     const isRoomAssignedOrOccupied = (rm) => {
       if (!rm) return false;
-      const isOccupied = rm.operational === 'occupied';
-      const isAllocated = rm.operational === 'allocated' || Boolean(rm.currentReservationId);
-      const hasGuest = Boolean(rm.currentGuestName && String(rm.currentGuestName).trim() !== '');
-      const hasActiveRes = (this.reservations || []).some(
-        res => (res.status === 'in_house' || res.status === 'confirmed') &&
-               (res.roomId === rm.id || String(res.roomNumber) === String(rm.roomNumber))
-      );
-      return isOccupied || isAllocated || hasGuest || hasActiveRes;
+      const hasActiveRes = (this.reservations || []).some((res) => {
+        if (!res) return false;
+        const st = String(res.status || '').toLowerCase().replace(/[\s-]+/g, '_');
+        if (st === 'cancelled' || st === 'canceled' || st === 'checked_out' || st === 'no_show' || st === 'departed') {
+          return false;
+        }
+        const rNum = String(rm.roomNumber || rm.id || '').trim().toLowerCase().replace(/^rm_/, '');
+        const resRoomNum = String(res.roomNumber || res.roomNum || '').trim().toLowerCase().replace(/^rm_/, '');
+        const resRoomId = String(res.roomId || '').trim().toLowerCase();
+        const rmId = String(rm.id || '').trim().toLowerCase();
+        return (
+          (resRoomId && (resRoomId === rmId || resRoomId === `rm_${rNum}` || resRoomId === rNum)) ||
+          (rNum && resRoomNum && resRoomNum === rNum)
+        );
+      });
+      return hasActiveRes;
     };
 
     const hasBusyRooms = assignedRooms.some(isRoomAssignedOrOccupied);
@@ -4587,7 +4387,7 @@ class PMSStore {
     this.rooms = (this.rooms || []).map(r => {
       const isMatch = r.roomTypeId === roomTypeId ||
                       String(r.roomTypeId).toLowerCase() === String(roomTypeId).toLowerCase() ||
-                      (rt && (r.roomTypeId === rt.id || r.roomTypeId === rt.code || r.roomType === rt.name || r.roomTypeName === rt.name));
+                      (rt && (r.roomTypeId === rt.id || r.roomTypeId === rt.code));
       if (isMatch) {
         const unlinked = {
           ...r,
@@ -4602,20 +4402,14 @@ class PMSStore {
       return r;
     });
 
-    this.roomTypes = (this.roomTypes || []).filter(r => r.id !== roomTypeId && r.code !== roomTypeId);
-    if (!this.deletedRoomTypeIds) this.deletedRoomTypeIds = new Set();
-    this.deletedRoomTypeIds.add(String(roomTypeId));
+    this.roomTypes = (this.roomTypes || []).filter(r => r.id !== roomTypeId && (rt ? r.id !== rt.id : true));
     if (rt) {
-      this.deletedRoomTypeIds.add(String(rt.id));
-      if (rt.code) this.deletedRoomTypeIds.add(String(rt.code));
-      if (rt.name) this.deletedRoomTypeIds.add(String(rt.name).toLowerCase());
       this.logAudit('DELETE_ROOM_TYPE', 'PROPERTIES', rt.id, `Deleted room type ${rt.name}`);
       this.deleteDocFromFirestore('roomTypes', rt.id);
       if (rt.code && rt.code !== rt.id) {
         this.deleteDocFromFirestore('roomTypes', rt.code);
       }
-      this.purgeMatchingCloudRoomTypes(rt.id, rt.code, rt.name);
-      this.recordDeletionInFirestore();
+      this.purgeMatchingCloudRoomTypes(rt.id, rt.code);
       // Also clean up rates in rate plans
       this.ratePlans = (this.ratePlans || []).map(rp => {
         if (rp.roomTypeRates && rp.roomTypeRates[rt.id]) {
@@ -4629,8 +4423,7 @@ class PMSStore {
       });
     } else {
       this.deleteDocFromFirestore('roomTypes', roomTypeId);
-      this.purgeMatchingCloudRoomTypes(roomTypeId, null, null);
-      this.recordDeletionInFirestore();
+      this.purgeMatchingCloudRoomTypes(roomTypeId, null);
     }
     this.save();
     this.notify();
@@ -4715,14 +4508,22 @@ class PMSStore {
     });
 
     if (rm) {
-      const isOccupied = rm.operational === 'occupied';
-      const isAllocated = rm.operational === 'allocated' || Boolean(rm.currentReservationId);
-      const hasGuest = Boolean(rm.currentGuestName && String(rm.currentGuestName).trim() !== '');
-      const hasActiveRes = (this.reservations || []).some(
-        res => (res.status === 'in_house' || res.status === 'confirmed') &&
-               (res.roomId === rm.id || String(res.roomNumber) === String(rm.roomNumber))
-      );
-      if (isOccupied || isAllocated || hasGuest || hasActiveRes) {
+      const hasActiveRes = (this.reservations || []).some((res) => {
+        if (!res) return false;
+        const st = String(res.status || '').toLowerCase().replace(/[\s-]+/g, '_');
+        if (st === 'cancelled' || st === 'canceled' || st === 'checked_out' || st === 'no_show' || st === 'departed') {
+          return false;
+        }
+        const rNum = String(rm.roomNumber || rm.id || '').trim().toLowerCase().replace(/^rm_/, '');
+        const resRoomNum = String(res.roomNumber || res.roomNum || '').trim().toLowerCase().replace(/^rm_/, '');
+        const resRoomId = String(res.roomId || '').trim().toLowerCase();
+        const rmId = String(rm.id || '').trim().toLowerCase();
+        return (
+          (resRoomId && (resRoomId === rmId || resRoomId === `rm_${rNum}` || resRoomId === rNum)) ||
+          (rNum && resRoomNum && resRoomNum === rNum)
+        );
+      });
+      if (hasActiveRes) {
         return { success: false, message: 'This room is currently assigned or occupied and cannot be deleted.' };
       }
     }
@@ -4736,16 +4537,7 @@ class PMSStore {
       return r.id !== roomId && r.roomNumber !== roomId && (!rmNumKey || rNumKey !== rmNumKey);
     });
 
-    if (!this.deletedRoomIds) this.deletedRoomIds = new Set();
-    this.deletedRoomIds.add(String(roomId));
-    if (rmNumKey) {
-      this.deletedRoomIds.add(rmNumKey);
-      this.deletedRoomIds.add(`rm_${rmNumKey}`);
-    }
     if (rm) {
-      this.deletedRoomIds.add(String(rm.id));
-      if (rm._firestoreDocId) this.deletedRoomIds.add(String(rm._firestoreDocId));
-      if (rm.roomNumber) this.deletedRoomIds.add(String(rm.roomNumber));
       this.logAudit('DELETE_ROOM', 'PROPERTIES', rm.roomNumber, `Deleted room ${rm.roomNumber}`);
       this.deleteDocFromFirestore('rooms', rm.id);
       if (rm._firestoreDocId && rm._firestoreDocId !== rm.id) {
@@ -4762,7 +4554,6 @@ class PMSStore {
       this.deleteDocFromFirestore('rooms', roomId);
       this.purgeMatchingCloudRooms(roomId, rmNumKey);
     }
-    this.recordDeletionInFirestore();
     this.save();
     this.notify();
     return { success: true };
