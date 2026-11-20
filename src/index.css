@@ -467,7 +467,8 @@ h1, h2, h3, h4, h5, h6,
 
 /* Calendar & Rates Viewport: Fills 100% available viewport height with no double scrollbars */
 .calendar-viewport,
-.rates-viewport {
+.rates-viewport,
+.housekeeping-viewport {
   overflow: hidden !important;
   display: flex !important;
   flex-direction: column !important;
@@ -476,7 +477,8 @@ h1, h2, h3, h4, h5, h6,
 }
 
 .calendar-viewport .pms-page-view,
-.rates-viewport .pms-page-view {
+.rates-viewport .pms-page-view,
+.housekeeping-viewport .pms-page-view {
   height: 100% !important;
   max-height: 100% !important;
   overflow: hidden !important;

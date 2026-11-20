@@ -539,7 +539,7 @@ export default function App() {
             )}
 
         {/* Dynamic Viewport with Page Transitions */}
-        <main className={`content-viewport ${activeTab === 'reservations' || activeTab === 'dashboard' || activeTab === 'rates' || activeTab === 'guests' || activeTab === 'myteam' || activeTab === 'permissions' || activeTab === 'properties' || activeTab === 'calendar' ? 'no-pad-viewport' : ''} ${activeTab === 'calendar' ? 'calendar-viewport' : ''} ${activeTab === 'rates' ? 'rates-viewport' : ''} ${activeTab === 'reservations' ? 'reservations-viewport' : ''}`}>
+        <main className={`content-viewport ${activeTab === 'reservations' || activeTab === 'dashboard' || activeTab === 'rates' || activeTab === 'guests' || activeTab === 'myteam' || activeTab === 'permissions' || activeTab === 'properties' || activeTab === 'calendar' || activeTab === 'housekeeping' ? 'no-pad-viewport' : ''} ${activeTab === 'calendar' ? 'calendar-viewport' : ''} ${activeTab === 'rates' ? 'rates-viewport' : ''} ${activeTab === 'housekeeping' ? 'housekeeping-viewport' : ''} ${activeTab === 'reservations' ? 'reservations-viewport' : ''}`}>
           <div key={activeTab} className="pms-page-view">
             {!canAccessRoute(state.currentUser, activeTab) ? (
               <AccessDeniedView

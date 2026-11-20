@@ -170,16 +170,28 @@ export default function HousekeepingView({
     });
   }, [rooms, reservations, selectedRoomType, selectedStatus]);
 
-  // Group rooms by room type
+  // Group rooms by room type (merging any room types sharing the same category name)
   const groupedRooms = useMemo(() => {
     const map = {};
     roomTypes.forEach((rt) => {
-      map[rt.id] = { type: rt, rooms: [] };
+      const key = (rt.name || rt.id || '').trim().toLowerCase();
+      if (!map[key]) {
+        map[key] = { type: rt, rooms: [] };
+      }
     });
     filteredRooms.forEach((r) => {
-      if (map[r.roomTypeId]) {
-        map[r.roomTypeId].rooms.push(r);
+      const matchedRt =
+        roomTypes.find((rt) => rt.id === r.roomTypeId || rt.code === r.roomTypeId) ||
+        roomTypes.find((rt) => rt.name && (rt.name === r.roomTypeName || rt.name === r.roomType));
+
+      const key = (matchedRt?.name || r.roomTypeName || r.roomType || r.roomTypeId || 'other').trim().toLowerCase();
+      if (!map[key]) {
+        map[key] = {
+          type: matchedRt || { id: r.roomTypeId || 'other', name: r.roomTypeName || r.roomType || 'Other' },
+          rooms: []
+        };
       }
+      map[key].rooms.push(r);
     });
     // Ensure room numbers are sorted numerically (101, 102, 201, 202)
     Object.values(map).forEach((g) => {
@@ -490,7 +502,7 @@ export default function HousekeepingView({
       )}
 
       {/* 3. Room Groups by Category */}
-      <div className="flex flex-col gap-8">
+      <div className="flex flex-col gap-3">
         {groupedRooms.map((group) => {
           const rt = group.type;
           const unassignedCount = unassignedReservations.filter((r) => r.roomTypeId === rt.id).length;
