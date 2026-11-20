@@ -48,16 +48,16 @@ if (fs.existsSync(envPath)) {
 }
 
 const firebaseConfig = {
-  apiKey: process.env.VITE_FIREBASE_API_KEY || env.VITE_FIREBASE_API_KEY || "",
-  authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN || env.VITE_FIREBASE_AUTH_DOMAIN || "",
-  projectId: process.env.VITE_FIREBASE_PROJECT_ID || env.VITE_FIREBASE_PROJECT_ID || "",
-  storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET || env.VITE_FIREBASE_STORAGE_BUCKET || "",
-  messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || env.VITE_FIREBASE_MESSAGING_SENDER_ID || "",
-  appId: process.env.VITE_FIREBASE_APP_ID || env.VITE_FIREBASE_APP_ID || "",
-  measurementId: process.env.VITE_FIREBASE_MEASUREMENT_ID || env.VITE_FIREBASE_MEASUREMENT_ID || ""
+  apiKey: process.env.VITE_FIREBASE_API_KEY || env.VITE_FIREBASE_API_KEY || "AIzaSyBBWLypsUHMSdHgGada6NArXKrKEKhWMEE",
+  authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN || env.VITE_FIREBASE_AUTH_DOMAIN || "hotel-aravli.firebaseapp.com",
+  projectId: process.env.VITE_FIREBASE_PROJECT_ID || env.VITE_FIREBASE_PROJECT_ID || "hotel-aravli",
+  storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET || env.VITE_FIREBASE_STORAGE_BUCKET || "hotel-aravli.firebasestorage.app",
+  messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || env.VITE_FIREBASE_MESSAGING_SENDER_ID || "903701520719",
+  appId: process.env.VITE_FIREBASE_APP_ID || env.VITE_FIREBASE_APP_ID || "1:903701520719:web:40abd86ff0ddf21e53a53a",
+  measurementId: process.env.VITE_FIREBASE_MEASUREMENT_ID || env.VITE_FIREBASE_MEASUREMENT_ID || "G-4WK1DET0YB"
 };
 
-console.log(`🚀 Initializing Firebase App for project: ${firebaseConfig.projectId || "hotel-263a3"}...`);
+console.log(`🚀 Initializing Firebase App for project: ${firebaseConfig.projectId || "hotel-aravli"}...`);
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
@@ -305,7 +305,7 @@ async function transferAllData() {
 
     console.log("=================================================");
     console.log("🎉 ALL HOTEL PMS DATA TRANSFERRED TO FIREBASE!");
-    console.log("   Database: Cloud Firestore (hotel-263a3)");
+    console.log("   Database: Cloud Firestore (hotel-aravli)");
     console.log("   Property ID: prop_astha_01");
     console.log("=================================================");
     process.exit(0);
